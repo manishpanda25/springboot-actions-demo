@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       # 1. Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,9 +27,9 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # 3. Build and test
+      # 3. Build, Test and Create JAR
       - name: Build with Maven
-        run: mvn clean test
+        run: mvn clean package
 
       # 4. Stop old application on EC2
       - name: Stop old application
@@ -40,15 +41,19 @@ jobs:
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
             if [ -f /home/ubuntu/app.pid ]; then
+
               PID=$(cat /home/ubuntu/app.pid)
 
               if kill -0 $PID 2>/dev/null; then
                 echo "Stopping old application..."
                 kill $PID
                 sleep 5
+              else
+                echo "Old application is not running."
               fi
 
               rm -f /home/ubuntu/app.pid
+
             else
               echo "No previous application found."
             fi
@@ -65,7 +70,7 @@ jobs:
           target: "/home/ubuntu/"
           overwrite: true
 
-      # 6. Start application on EC2
+      # 6. Start new application on EC2
       - name: Start application on EC2
         if: github.event_name == 'push'
         uses: appleboy/ssh-action@v1
@@ -74,6 +79,8 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
+            echo "Starting Spring Boot application..."
+
             nohup java -jar /home/ubuntu/demo-0.0.1-SNAPSHOT.jar \
               > /home/ubuntu/app.log 2>&1 &
 
@@ -81,3 +88,16 @@ jobs:
 
             echo "Application started."
             echo "PID: $(cat /home/ubuntu/app.pid)"
+
+            sleep 5
+
+            echo "Checking application process..."
+
+            if kill -0 $(cat /home/ubuntu/app.pid) 2>/dev/null; then
+              echo "Spring Boot application is running successfully."
+            else
+              echo "Spring Boot application failed to start."
+              echo "Application log:"
+              tail -50 /home/ubuntu/app.log
+              exit 1
+            fi
