@@ -27,7 +27,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # 3. Build, Test and Create JAR
+      # 3. Build, test and create JAR
       - name: Build with Maven
         run: mvn clean package
 
@@ -70,7 +70,7 @@ jobs:
           target: "/home/ubuntu/"
           overwrite: true
 
-      # 6. Start new application on EC2
+      # 6. Start application on EC2
       - name: Start application on EC2
         if: github.event_name == 'push'
         uses: appleboy/ssh-action@v1
@@ -81,7 +81,7 @@ jobs:
           script: |
             echo "Starting Spring Boot application..."
 
-            nohup java -jar /home/ubuntu/demo-0.0.1-SNAPSHOT.jar \
+            nohup java -jar /home/ubuntu/target/demo-0.0.1-SNAPSHOT.jar \
               > /home/ubuntu/app.log 2>&1 &
 
             echo $! > /home/ubuntu/app.pid
