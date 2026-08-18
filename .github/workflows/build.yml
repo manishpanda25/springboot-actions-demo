@@ -1,4 +1,4 @@
-name: Spring Boot Build
+name: Spring Boot CI/CD
 
 on:
   push:
@@ -14,14 +14,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # 1. Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Setup Java 21
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: maven
 
+      # 3. Build and test Spring Boot application
       - name: Build with Maven
-        run: mvn clean test
+        run: mvn clean package
+
+      # 4. Stop old application on EC2
+      - name: Stop old application
+        if: github.event_name == 'push'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          script: |
+            pkill -f 'app.jar' || true
+            rm -f /home/ubuntu/app.jar
+
+      # 5. Upload new JAR to EC2
+      - name: Upload JAR to EC2
+        if: github.event_name == 'push'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          source: "target/*.jar"
+          target: "/home/ubuntu/"
+          strip_components: 1
+
+      # 6. Start Spring Boot application
+      - name: Start application on EC2
+        if: github.event_name == 'push'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          script: |
+            nohup java -jar /home/ubuntu/demo-0.0.1-SNAPSHOT.jar > /home/ubuntu/app.log 2>&1 &
