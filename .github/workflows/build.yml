@@ -40,8 +40,14 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            pkill -f 'app.jar' || true
-            rm -f /home/ubuntu/app.jar
+            PID=$(pgrep -f '/home/ubuntu/demo-0.0.1-SNAPSHOT.jar' || true)
+
+            if [ -n "$PID" ]; then
+              kill $PID || true
+              sleep 2
+            fi
+
+            rm -f /home/ubuntu/demo-0.0.1-SNAPSHOT.jar
 
       # 5. Upload new JAR to EC2
       - name: Upload JAR to EC2
@@ -51,11 +57,10 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          source: "target/*.jar"
+          source: "target/demo-0.0.1-SNAPSHOT.jar"
           target: "/home/ubuntu/"
-          strip_components: 1
 
-      # 6. Start Spring Boot application
+      # 6. Start Spring Boot application on EC2
       - name: Start application on EC2
         if: github.event_name == 'push'
         uses: appleboy/ssh-action@v1
