@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       # 1. Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,9 +26,9 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # 3. Build and test Spring Boot application
+      # 3. Build and test
       - name: Build with Maven
-        run: mvn clean package
+        run: mvn clean test
 
       # 4. Stop old application on EC2
       - name: Stop old application
@@ -40,16 +39,21 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            PID=$(pgrep -f '/home/ubuntu/demo-0.0.1-SNAPSHOT.jar' || true)
+            if [ -f /home/ubuntu/app.pid ]; then
+              PID=$(cat /home/ubuntu/app.pid)
 
-            if [ -n "$PID" ]; then
-              kill $PID || true
-              sleep 2
+              if kill -0 $PID 2>/dev/null; then
+                echo "Stopping old application..."
+                kill $PID
+                sleep 5
+              fi
+
+              rm -f /home/ubuntu/app.pid
+            else
+              echo "No previous application found."
             fi
 
-            rm -f /home/ubuntu/demo-0.0.1-SNAPSHOT.jar
-
-      # 5. Upload new JAR to EC2
+      # 5. Upload JAR to EC2
       - name: Upload JAR to EC2
         if: github.event_name == 'push'
         uses: appleboy/scp-action@v0.1.7
@@ -59,8 +63,9 @@ jobs:
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           source: "target/demo-0.0.1-SNAPSHOT.jar"
           target: "/home/ubuntu/"
+          overwrite: true
 
-      # 6. Start Spring Boot application on EC2
+      # 6. Start application on EC2
       - name: Start application on EC2
         if: github.event_name == 'push'
         uses: appleboy/ssh-action@v1
@@ -69,4 +74,10 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            nohup java -jar /home/ubuntu/demo-0.0.1-SNAPSHOT.jar > /home/ubuntu/app.log 2>&1 &
+            nohup java -jar /home/ubuntu/demo-0.0.1-SNAPSHOT.jar \
+              > /home/ubuntu/app.log 2>&1 &
+
+            echo $! > /home/ubuntu/app.pid
+
+            echo "Application started."
+            echo "PID: $(cat /home/ubuntu/app.pid)"
